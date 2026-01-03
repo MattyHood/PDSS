@@ -4,15 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdss"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python Data Science Summary Tools"
 readme = "readme.md"
 requires-python = ">=3.10"
 dependencies = [
   "pandas",
+  "openpyxl",
   "numpy",
   "scikit-learn",
+  "matplotlib",
+  "seaborn",
+  "statsmodels"
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["pdss*"]

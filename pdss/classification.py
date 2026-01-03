@@ -1,68 +1,78 @@
 """
-Python Data Science Summary Tools
+Python Data Science Summary Tools (PDSS)
 classification.py
 
-26/11/2025 Changelog:
-- Created initial classification module
-- Added basic training, evaluation, and diagnostic plotting
-- Supports multiple classifiers with optional automated hyperparameter tuning
+A collection of simple, practical utilities for classification modelling,
+evaluation, and visual diagnostics. Designed to support exploratory analysis,
+model benchmarking, and decision-focused evaluation for real-world problems
+such as churn prediction and DNA (Did Not Attend) risk.
 
-01/12/2025 Changelog:
-- Added validate_model to validate whether the model was useful (similar to R²)
-- train_classifier instead of Train_Classifier for better Python practice
-- Removed duplicate library imports and tidied unnecessary code
-- Edited max_iter function to decrease the chance of code breaking errors based on user input
+Core design principles:
+- Simple, readable workflows
+- Sensible defaults for classification
+- Emphasis on recall and decision thresholds for imbalanced problems
+- Diagnostic metrics separated from operational decision metrics
 
-02/12/2025 Changelog:
-- Removed duplicate libraries
-- Added plot_roc_auc function and added comments explaining how it works
-- Standardised formatting for module notes
+Features
+--------
 
-A collection of simple and useful functions for performing
-classification modelling, evaluation, and visualisation within PDSS.
+classification_help()
+    - Step-by-step guidance for classification workflows in PDSS
+    - Data preparation and class balance checks
+    - Supported models and when to use them
+    - Explanation of stratification, optimisation, threshold tuning, and ROC-AUC
 
-Features:
+train_classifier(X, y, ...)
+    - Train a single classifier or benchmark multiple classifiers
+    - Stratified train test splitting by default
+    - Optional hyperparameter optimisation using RandomizedSearchCV
+    - Optional threshold tuning using a validation split
+    - Prints accuracy, precision, recall, F1-score
+    - Prints ROC-AUC as a ranking diagnostic for binary problems
+    - Returns trained model, metrics, and train test splits
 
-- classification_help():
-    - Overview of how to prepare data for classification
-    - Steps for train/test splitting
-    - Description of supported classifiers
-    - Guidance on recommended checks:
-        - Class balance
-        - Feature preprocessing (numeric/categorical)
-        - Optional scaling
+evaluate_model(model, X_train, X_test, y_train, y_test, ...)
+    - Evaluates a trained classifier at a chosen probability threshold
+    - Supports probability based predictions when available
+    - Computes accuracy, precision, recall, F1-score
+    - Optionally prints ROC-AUC for binary classification
+    - Displays confusion matrix for interpretability
 
-- train_classifier(X, y, model_list=None, optimise=False, test_size=0.2, random_state=2025):
-    - Fits one or more classification models
-    - Returns models, evaluation metrics, and train/test sets
-    - Prints accuracy, precision, recall and F1-score
+validate_model(model, X, y, ...)
+    - Performs cross-validation on fitted or unfitted classifiers
+    - Supports stratified folds for classification
+    - Returns mean and standard deviation of scores
+    - Provides simple interpretability guidance for stability
 
-- validate_model(model, X, y, folds=5, scoring='accuracy'):
-    - Cross-validation on any fitted or unfitted classifiers
-    - Returns 5 folds, and provides a mean and standard deviation for cross validation
-    - Summarises results with print function
+plot_roc_auc(model, X_test, y_test, ...)
+    - Computes ROC-AUC for binary classification
+    - Optionally plots the ROC curve
+    - Intended as a diagnostic and comparison tool
+    - Not intended for threshold selection
 
-- plot_roc_auc(model, X_test, y_test, labels=None, plot=True):
-    - Computes roc_auc
-    - Option generation of ROC_AUC curve plot
-    - Auto-detects positive class
-    - Returns AUC score numerically.
+Intended usage
+--------------
+PDSS classification tools are designed for workflows where:
+- Class imbalance is common
+- Missing positive cases is more costly than false positives
+- Threshold selection is a key decision step
+- Model ranking quality (ROC-AUC) is used as a diagnostic, not an objective
 
 Author: Matty Hood
 Created: 26/11/2025
+Last updated: 03/01/2026
 """
 
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-from sklearn.model_selection import train_test_split, RandomizedSearchCV, cross_val_score
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, cross_val_score, StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score, roc_curve
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
-
 
 
 import warnings
@@ -81,54 +91,99 @@ def classification_help():
         classification_help()
     """
     text = """
-Classification Models
----------------------
+PDSS Classification Models
+--------------------------
 Steps for using classification tools in PDSS
 
-1. Prepare your dataframe
+1. Prepare your data
    - Identify features (X) and target (y)
-   - Ensure correct column types (numeric for X, categorical for y)
+   - X should contain numeric columns and any encoded categorical columns
+   - y should be the target labels (binary is most common for churn, DNA, etc.)
    - Handle missing values (drop, fill, encode)
-   - Optional: Scale numeric features for algorithms like SVM or KNN
+   - Optional: Scale numeric features for algorithms like SVC or KNN
 
 2. Check class balance
    - Use y.value_counts() to inspect distribution
-   - Consider balancing techniques if heavily skewed
+   - If heavily imbalanced, accuracy can be misleading
+   - For churn or DNA problems, recall is often more important than accuracy
 
-3. Train/test split
-   - Handled internally by train_classifier
+3. Train/test split (stratification)
+   - train_classifier can stratify splits so both sets keep similar class balance
+   - Recommended for classification, especially imbalanced data
+   - Use stratify=True (recommended default)
+
+4. Train models (single or all models)
+   Example single model:
+       result = train_classifier(X, y, model_name="RandomForestClassifier")
+
+   Example quick benchmark:
+       results = train_classifier(X, y, all_models=True)
+
+   Supported models:
+   - LogisticRegression
+   - RandomForestClassifier
+   - GradientBoostingClassifier
+   - AdaBoostClassifier
+   - KNeighborsClassifier
+   - SVC
+
+5. Hyperparameter optimisation (RandomizedSearchCV)
+   - optimise=False -> Fit with default parameters
+   - optimise=True  -> RandomizedSearchCV using sensible default grids
+
+   Tip:
+   - Choose a scoring metric that matches your goal
+   - For imbalanced problems, consider recall or f1 rather than accuracy
+
+6. Threshold tuning (recommended for binary problems)
+   - Some models output probabilities (predict_proba) or decision scores
+   - By default, model.predict uses an internal cutoff (often similar to 0.5)
+   - Threshold tuning chooses a better cutoff for your goal
+
+   PDSS workflow:
+   - Fit (and optionally optimise) model on training data
+   - Tune threshold on a validation split taken from training data
+   - Evaluate once on the test set using the tuned threshold
+
+   Why this matters:
+   - High ROC-AUC with low recall often means the model ranks well but needs a different threshold
+
    Example:
-   result = train_classifier(X, y)
-   model = result['model']
-   metrics = result['metrics']
-   X_train, X_test = result['X_train'], result['X_test']
-   y_train, y_test = result['y_train'], result['y_test']
+       result = train_classifier(
+           X, y,
+           model_name="AdaBoostClassifier",
+           optimise=True,
+           stratify=True,
+           threshold_tune=True,
+           threshold_objective="recall"
+       )
 
-4. Choose models
-   - Logistic Regression
-   - Random Forest
-   - Gradient Boosting
-   - AdaBoost
-   - K-Nearest Neighbors (KNN)
-   - Support Vector Machine (SVM)
+   Objectives for threshold tuning:
+   - "recall"     -> catch as many positives as possible
+   - "f1"         -> balance precision and recall
+   - "precision"  -> reduce false positives
+   - "min_cost"   -> minimise weighted FP/FN cost (advanced)
 
-5. Hyperparameter optimisation
-   - optimise=False -> Cross-validation only
-   - optimise=True  -> RandomizedSearchCV with sensible defaults
+7. Model validation (cross-validation)
+   - validate_model runs cross-validation for a chosen scoring metric
+   Example:
+       validate_model(model, X, y, folds=5, scoring="recall")
 
-6. Evaluate models
-   Metrics for each classifier:
-   - Accuracy
-   - Precision
-   - Recall
-   - F1-score
+8. ROC-AUC (interpretation)
+   - ROC-AUC measures ranking quality, not thresholded performance
+   - It answers: "Do positives tend to receive higher scores than negatives?"
+   - ROC-AUC does not change when you change the threshold
+   - Use ROC-AUC as a diagnostic and comparison metric, not a threshold decision tool
 
-7. Optional visual diagnostics
-   - Confusion matrix
-   - ROC-AUC plot
+   ROC-AUC rough guide:
+   - 0.50 -> random ranking
+   - 0.60 to 0.70 -> weak but possibly useful
+   - 0.70 to 0.85 -> good ranking signal
+   - 0.90+ -> very strong signal (or potential leakage)
 
 """
     print(text)
+
 
 
 classifier_map = {
@@ -150,121 +205,266 @@ default_param_grids = {
     "SVC": {'C':[0.1,1,10],'kernel':['linear','rbf'],'gamma':['scale','auto'],'probability':[True]}
 }
 
+def get_scores(model, X):
+    """
+    Returns a continuous score for the positive class.
+    Prefers predict_proba, falls back to decision_function.
+    """
+    if hasattr(model, "predict_proba"):
+        return model.predict_proba(X)[:, -1]
+    if hasattr(model, "decision_function"):
+        scores = model.decision_function(X)
+        if hasattr(scores, "ndim") and scores.ndim > 1:
+            scores = scores[:, -1]
+        # Map to 0 to 1 range using logistic transform for thresholding convenience
+        return 1.0 / (1.0 + np.exp(-scores))
+    raise ValueError(f"Model {model.__class__.__name__} does not support predict_proba or decision_function.")
 
-def train_classifier(X, y, model_name="RandomForestClassifier", optimise=False, all_models=False, test_size=0.2, random_state=2025, n_jobs=4, labels=None, n_iter = 10):
+
+def threshold_optimiser(
+    y_true,  # true binary labels
+    y_score, # continuous scores for positive class (get_scores(model, X))
+    objective: str = "recall",          # "recall" | "f1" | "precision" | "min_cost"
+    step: float = 0.01,
+    constraint: dict | None = None,     # example: {"precision_min": 0.8, "recall_min": 0.5}
+    costs: dict | None = None           # example: {"fp": 1.0, "fn": 5.0}
+):
+    """
+    Sweep thresholds and return best threshold plus a table you can turn into a DataFrame.
+    """
+    y_true = np.asarray(y_true).astype(int)
+    y_score = np.asarray(y_score).astype(float)
+
+    thresholds = np.arange(0.0, 1.0 + step, step)
+    rows = []
+
+    for t in thresholds:
+        y_pred = (y_score >= t).astype(int)
+
+        prec = precision_score(y_true, y_pred, zero_division=0)
+        rec = recall_score(y_true, y_pred, zero_division=0)
+        f1v = f1_score(y_true, y_pred, zero_division=0)
+
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+
+        cost = None
+        if costs is not None:
+            cost = float(costs.get("fp", 1.0)) * fp + float(costs.get("fn", 1.0)) * fn
+
+        rows.append({
+            "threshold": float(t),
+            "precision": float(prec),
+            "recall": float(rec),
+            "f1": float(f1v),
+            "tp": int(tp),
+            "fp": int(fp),
+            "tn": int(tn),
+            "fn": int(fn),
+            "cost": None if cost is None else float(cost),
+        })
+
+    filtered = rows
+    if constraint:
+        if "precision_min" in constraint:
+            pmin = float(constraint["precision_min"])
+            filtered = [r for r in filtered if r["precision"] >= pmin]
+        if "recall_min" in constraint:
+            rmin = float(constraint["recall_min"])
+            filtered = [r for r in filtered if r["recall"] >= rmin]
+
+    if not filtered:
+        return 0.5, rows, {"reason": "No thresholds satisfied constraints"}
+
+    if objective == "recall":
+        best = max(filtered, key=lambda r: r["recall"])
+    elif objective == "f1":
+        best = max(filtered, key=lambda r: r["f1"])
+    elif objective == "precision":
+        best = max(filtered, key=lambda r: r["precision"])
+    elif objective == "min_cost":
+        if costs is None:
+            raise ValueError("objective='min_cost' requires costs, eg {'fp': 1.0, 'fn': 5.0}")
+        best = min(filtered, key=lambda r: r["cost"])
+    else:
+        raise ValueError(f"Unknown objective: {objective}")
+
+    return float(best["threshold"]), rows, best
+
+
+def train_classifier(
+    X, y,
+    model_name="RandomForestClassifier",
+    optimise=False, # whether to do basic hyperparameter optimisation
+    all_models=False, # whether to train all default classifiers
+    test_size=0.2, # fraction of data used for test set
+    random_state=2025, # seed for reproducibility
+    n_jobs=4, # parallel jobs for RandomizedSearchCV
+    labels=None, # list of labels for evaluation
+    n_iter=10, # number of iterations for RandomizedSearchCV
+    stratify=True, # stratified splitting
+    threshold_tune=False, # whether to do threshold tuning
+    threshold_objective="recall", # "recall", "precision", "f1", "min_cost"
+    threshold_step=0.01, 
+    threshold_val_size=0.2, # fraction of train set for threshold tuning
+    threshold_constraint=None, # e.g., {"precision_min": 0.8, "recall_min": 0.5}
+    threshold_costs=None # e.g., {"fp": 1.0, "fn": 5.0}
+):
     """
     Train and evaluate classification model(s) in PDSS.
-
-    Parameters:
-        X : DataFrame
-        y : Series
-        model_name : str
-            Name of classifier to train (ignored if all_models=True)
-        optimise : bool
-            If True, runs RandomizedSearchCV for rough hyperparameter optimisation
-        all_models : bool
-            If True, trains all default classifiers and prints metrics for comparison
-        test_size : float
-            Fraction of data used for test set
-        random_state : int
-            Seed for reproducibility
-        n_jobs : int
-            Parallel jobs for RandomizedSearchCV
-        labels : list, optional
-            Labels for evaluation and confusion matrix. If None, inferred from y
-
-    Returns:
-        dict of trained models and their metrics
+    Adds stratified splitting by default and optional threshold tuning.
     """
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y if stratify else None
+    )
+
+    # Optional internal validation split for threshold tuning
+    if threshold_tune:
+        X_fit, X_val, y_fit, y_val = train_test_split(
+            X_train, y_train,
+            test_size=threshold_val_size,
+            random_state=random_state,
+            stratify=y_train if stratify else None
+        )
+    else:
+        X_fit, y_fit = X_train, y_train
+        X_val = y_val = None
+    cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=random_state)
+
+    def _fit_one(name, cls):
+        print(f"\nTraining {name} ...")
+        model = cls()
+
+        best_params = None
+
+        if optimise and name in default_param_grids:
+            param_grid = default_param_grids[name]
+            max_iter = int(np.prod([len(v) for v in param_grid.values()]))
+            n_iter_eff = min(n_iter, max_iter)
+
+            rs = RandomizedSearchCV(
+                model,
+                param_distributions=param_grid,
+                n_iter=n_iter_eff,
+                cv=cv,
+                random_state=random_state,
+                n_jobs=n_jobs
+            )
+            rs.fit(X_fit, y_fit)
+            model = rs.best_estimator_
+            best_params = rs.best_params_
+            print(f"Best params for {name}: {best_params}")
+        else:
+            model.fit(X_fit, y_fit)
+
+        # Threshold tuning after optimisation
+        best_threshold = 0.5
+        threshold_table = None
+
+        if threshold_tune and (y_val is not None):
+            # Only valid for binary problems
+            unique_labels = sorted(np.unique(y_val))
+            if unique_labels == [0, 1] and (hasattr(model, "predict_proba") or hasattr(model, "decision_function")):
+                y_val_score = get_scores(model, X_val)
+                best_threshold, threshold_table, best_row = threshold_optimiser(
+                    y_true=y_val,
+                    y_score=y_val_score,
+                    objective=threshold_objective,
+                    step=threshold_step,
+                    constraint=threshold_constraint,
+                    costs=threshold_costs
+                )
+                print(f"[PDSS] Best threshold (objective={threshold_objective}) : {best_threshold:.3f}")
+            else:
+                print("[PDSS] Threshold tuning skipped (requires binary labels and probability scores).")
+
+        # Evaluate on test at chosen threshold
+        metrics = evaluate_model(
+            model,
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            labels=labels,
+            threshold=best_threshold
+        )
+
+        return {
+            "model": model,
+            "metrics": metrics,
+            "best_params": best_params,
+            "best_threshold": best_threshold,
+            "threshold_table": threshold_table,
+        }
 
     # Train ALL models
     if all_models:
         results = {}
-
         for name, cls in classifier_map.items():
-            print(f"\nTraining {name} ...")
-            model = cls()
-
-            if optimise and name in default_param_grids:
-                param_grid = default_param_grids[name]
-                max_iter = int(np.prod([len(v) for v in param_grid.values()]))
-                n_iter_eff = min(n_iter, max_iter)
-
-                rs = RandomizedSearchCV(
-                    model, param_distributions=param_grid,
-                    n_iter=n_iter_eff, cv=3, random_state=random_state,
-                    n_jobs=n_jobs
-                )
-                rs.fit(X_train, y_train)
-                model = rs.best_estimator_
-
-                print(f"Best params for {name}: {rs.best_params_}")
-
-            else:
-                model.fit(X_train, y_train)
-
-            metrics = evaluate_model(model, X_train, X_test, y_train, y_test, labels)
-            results[name] = {"model": model, "metrics": metrics}
-
+            results[name] = _fit_one(name, cls)
         return results
 
     # Train single model
     if model_name not in classifier_map:
         raise ValueError(f"Unknown model_name {model_name}.")
 
-    model = classifier_map[model_name]()
+    return_obj = _fit_one(model_name, classifier_map[model_name])
 
-    if optimise and model_name in default_param_grids:
-        param_grid = default_param_grids[model_name]
-        max_iter = int(np.prod([len(v) for v in param_grid.values()]))
-        n_iter_eff = min(n_iter, max_iter)
-
-        rs = RandomizedSearchCV(
-            model, param_distributions=param_grid,
-            n_iter=n_iter_eff, cv=3, random_state=random_state,
-            n_jobs=n_jobs
-        )
-        rs.fit(X_train, y_train)
-        model = rs.best_estimator_
-
-        print(f"Best params for {model_name}: {rs.best_params_}")
-    else:
-        model.fit(X_train, y_train)
-
-    metrics = evaluate_model(model, X_train, X_test, y_train, y_test, labels)
-
+    # Keep your original return keys too
     return {
-        "model": model,
-        "metrics": metrics,
+        **return_obj,
         "X_train": X_train,
         "X_test": X_test,
         "y_train": y_train,
         "y_test": y_test,
     }
 
-def evaluate_model(model, X_train, X_test, y_train, y_test, labels=None):
+
+
+def evaluate_model(model, X_train, X_test, y_train, y_test, labels=None, threshold=0.5):
     """
     Compute metrics and plot confusion matrix for a trained classifier.
+    Supports custom threshold when probabilities are available.
     """
 
     if labels is None:
-        labels = sorted(y_test.unique())  # auto-detect labels
+        labels = sorted(y_test.unique())
 
     binary_class = len(labels) == 2
-    pos_label = labels[-1] if binary_class else None
+    pos_label = labels[-1] if binary_class else None 
+    
+    # Predictions
+    used_threshold = False
+    auc = None
 
-    y_pred_train = model.predict(X_train)
-    y_pred_test = model.predict(X_test)
+    if binary_class and (hasattr(model, "predict_proba") or hasattr(model, "decision_function")):
+        y_train_score = get_scores(model, X_train)
+        y_test_score = get_scores(model, X_test)
+
+        y_pred_train = (y_train_score >= threshold).astype(int)
+        y_pred_test = (y_test_score >= threshold).astype(int)
+
+        used_threshold = True
+        try:
+            auc = roc_auc_score(y_test, y_test_score)
+        except Exception:
+            auc = None
+    else:
+        y_pred_train = model.predict(X_train)
+        y_pred_test = model.predict(X_test)
+        y_test_score = None
 
     # Basic metrics
     train_acc = accuracy_score(y_train, y_pred_train)
     test_acc  = accuracy_score(y_test, y_pred_test)
 
     if binary_class:
-        precision = precision_score(y_test, y_pred_test, pos_label=pos_label)
-        recall    = recall_score(y_test, y_pred_test, pos_label=pos_label)
-        f1        = f1_score(y_test, y_pred_test, pos_label=pos_label)
+        precision = precision_score(y_test, y_pred_test, pos_label=pos_label, zero_division=0)
+        recall    = recall_score(y_test, y_pred_test, pos_label=pos_label, zero_division=0)
+        f1        = f1_score(y_test, y_pred_test, pos_label=pos_label, zero_division=0)
     else:
         precision = precision_score(y_test, y_pred_test, average='macro', zero_division=0)
         recall    = recall_score(y_test, y_pred_test, average='macro', zero_division=0)
@@ -272,11 +472,15 @@ def evaluate_model(model, X_train, X_test, y_train, y_test, labels=None):
 
     # Print summary
     print("-"*30)
+    if used_threshold:
+        print(f"Threshold      : {threshold:.2f}")
     print(f"Train Accuracy : {train_acc:.2%}")
     print(f"Test Accuracy  : {test_acc:.2%}")
     print(f"Precision ({labels[-1]}) : {precision:.2%}")
     print(f"Recall    ({labels[-1]}) : {recall:.2%}")
     print(f"F1-Score  ({labels[-1]}) : {f1:.2%}")
+    if auc is not None:
+        print(f"ROC-AUC        : {auc:.3f}")
 
     # Confusion Matrix
     cm = confusion_matrix(y_test, y_pred_test, labels=labels)
@@ -287,7 +491,7 @@ def evaluate_model(model, X_train, X_test, y_train, y_test, labels=None):
     plt.ylabel("Actual")
     plt.show()
 
-    return {
+    out = {
         "train_acc": train_acc,
         "test_acc": test_acc,
         "precision": precision,
@@ -295,30 +499,29 @@ def evaluate_model(model, X_train, X_test, y_train, y_test, labels=None):
         "f1": f1,
     }
 
-def validate_model(model, X, y, folds=5, scoring='accuracy'):
+    if auc is not None:
+        out["roc_auc"] = auc
+
+    if used_threshold:
+        out["threshold"] = threshold
+
+    return out
+
+def validate_model(model, X, y, folds=5, scoring='accuracy', stratify=True, random_state=2025):
     """
     Performs cross-validation on any fitted or unfitted classifier.
-
-    Parameters:
-        model : sklearn estimator
-        X : DataFrame or array-like
-        y : Series or array-like
-        folds : int (default 5)
-            Number of CV folds.
-        scoring : str (default 'accuracy')
-            Any valid sklearn scoring string.
-
-    Returns:
-        dict with cross-validation mean, std, and raw fold scores.
     """
 
-    # Perform cross-validation
-    scores = cross_val_score(model, X, y, cv=folds, scoring=scoring)
+    if stratify:
+        cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=random_state)
+    else:
+        cv = folds
+
+    scores = cross_val_score(model, X, y, cv=cv, scoring=scoring)
 
     acc_mean = scores.mean()
     acc_std = scores.std()
 
-    # Interpret mean
     if acc_mean < 0.5:
         mean_interpretation = 'Unusable'
     elif acc_mean <= 0.7:
@@ -326,18 +529,16 @@ def validate_model(model, X, y, folds=5, scoring='accuracy'):
     else:
         mean_interpretation = 'Good model fit'
 
-    # Interpret variance
     if acc_std < 0.05:
         std_interpretation = 'Good stability'
     elif acc_std < 0.1:
-        std_interpretation = 'Moderate variation — investigate'
+        std_interpretation = 'Moderate variation, investigate'
     else:
-        std_interpretation = 'High variation — possible instability'
+        std_interpretation = 'High variation, possible instability'
 
-    # Print results
     print("Cross-validation fold scores:", scores)
-    print(f"Mean: {acc_mean:.3f} — {mean_interpretation}")
-    print(f"Std:  {acc_std:.3f} — {std_interpretation}")
+    print(f"Mean: {acc_mean:.3f} ({mean_interpretation})")
+    print(f"Std:  {acc_std:.3f} ({std_interpretation})")
 
     return {
         "cv_scores": scores,
@@ -346,6 +547,7 @@ def validate_model(model, X, y, folds=5, scoring='accuracy'):
         "mean_interpretation": mean_interpretation,
         "std_interpretation": std_interpretation
     }
+
 
 def plot_roc_auc(model, X_test, y_test, labels=None, plot=True):
     """
